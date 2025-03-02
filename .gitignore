@@ -1,0 +1,11 @@
+# Ignore compiled binaries
+browser.exe
+browser
+
+# Ignore build directory
+build/
+
+# Ignore temporary files
+*.o
+*.obj
+*.log
