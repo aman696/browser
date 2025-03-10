@@ -10,7 +10,7 @@ include_directories(${CMAKE_SOURCE_DIR}/include)
 set(OPENSSL_ROOT_DIR "C:/msys64/mingw64" CACHE PATH "Path to OpenSSL")
 find_package(OpenSSL REQUIRED)
 
-file(GLOB_RECURSE SOURCES "src/*.cpp")
+file(GLOB_RECURSE SOURCES "src/*.cpp" "include/*.cpp")
 add_executable(browser ${SOURCES})
 
 # Link OpenSSL
