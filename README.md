@@ -1,179 +1,244 @@
-# Custom Web Browser (C++ Project)
+# Ferrum
 
-## 📌 Project Overview
-This is a **foundational web browser** built from scratch using **C++** without leveraging existing browser engines like Chromium, Gecko, or WebKit. The project focuses on developing a modular browser with components for **networking (HTTP/HTTPS requests), HTML parsing, rendering, JavaScript execution, and multimedia playback**.
+**A privacy-first browser engine written in Rust.**
 
-This repository is a **long-term learning project**, following a structured **phase-based development approach**.
+Ferrum renders the modern web without surveilling you while doing it. No telemetry. No background network calls. No trackers. No AI features. Just a browser that gets out of the way.
 
 ---
 
-## **🚀 Phase 1: Initial Setup & Build System Configuration**
+## What Ferrum Is
 
-### **1️⃣ Prerequisites**
-Before setting up the project, ensure you have the following tools installed:
+Ferrum is a browser engine being rewritten from a C++ prototype into idiomatic Rust. The rewrite is not a line-for-line translation — it is a ground-up reimplementation using Rust's ownership model, arena allocation, and async I/O to eliminate the classes of bugs that make browsers a primary attack surface.
 
-### **🔹 Windows Users (MinGW + Git Bash)**
-- [Git](https://git-scm.com/downloads)
-- [MinGW-w64](https://www.mingw-w64.org/downloads/) (for GCC and Makefiles)
-- [CMake](https://cmake.org/download/)
-- [MSYS2 (if needed)](https://www.msys2.org/)
+The privacy model is not a feature toggle. It is the architecture. Third-party cookies are blocked at the network layer. DNS queries are encrypted by default. Canvas fingerprinting returns noise. The HSTS preload list ships with the binary. History and cache do not touch disk unless you explicitly opt in.
 
-#### **Verify Installation**
-Run the following commands in **Git Bash** or **Command Prompt**:
+The browser is designed to work on the real modern web — not a sandboxed subset of it. If a mainstream site requires it, Ferrum supports it. Compatibility is not sacrificed for privacy; they are managed as a tradeoff, transparently, with the user in control.
+
+---
+
+## Why Rust
+
+Browsers parse untrusted input constantly — malformed HTML, adversarial CSS, hostile JavaScript. A use-after-free or buffer overflow in a browser is not a minor bug; it is a security vulnerability.
+
+The C++ prototype proved the architecture. Rust is how it becomes production-safe. Memory safety is enforced at compile time. There is no garbage collector introducing latency pauses. The codebase is auditable without needing to reason about pointer ownership by hand.
+
+No OpenSSL. No system resolver. No C FFI except where strictly contained (the `aws-lc-rs` crypto backend inside `rustls`).
+
+---
+
+## Current Status
+
+**Early development.** The project is pre-alpha — not yet useful as a browser. The Rust workspace is set up and functional:
+
+| Component | Status |
+|---|---|
+| Workspace structure (`crates/`) | ✅ Complete |
+| URL parser (`crates/net`) | ✅ Complete — HTTPS enforcement, full test suite |
+| HTML tokenizer (`crates/html`) | ✅ Complete — raw-text mode, WHATWG-aligned |
+| HTML parser + DOM (`crates/html`) | ✅ Complete — arena allocation, error recovery |
+| HTTP/HTTPS fetch (`crates/net`) | 🔲 Stub — `rustls` + `tokio` + `hickory-resolver` pending |
+| CSS parsing (`crates/css`) | 🔲 Not started |
+| Layout engine (`crates/layout`) | 🔲 Not started |
+| Renderer (`crates/render`) | 🔲 Not started |
+| JavaScript engine (`crates/js`) | 🔲 Blocked — `boa_engine` audit required |
+| Security / privacy policy (`crates/security`) | 🔲 Not started |
+
+---
+
+## Architecture
+
+```
+crates/
+├── net/        HTTP/HTTPS networking. Owns all sockets and TLS. Nothing else touches the network.
+├── html/       WHATWG-spec tokenizer and DOM (arena allocation via bumpalo/typed-arena)
+├── css/        CSS parsing and cascade
+├── layout/     Box model and layout engine
+├── render/     Painting and compositing
+├── js/         JavaScript engine (Boa — pending audit)
+├── security/   TLS policy, cookies, HSTS, content blocking, permission store
+└── browser/    Top-level binary. Wires crates together. No business logic.
+```
+
+Each crate has a single responsibility. No circular dependencies. No global mutable state. The network stack is a chokepoint — all requests pass through `NetworkContext` where privacy policy is enforced. There is no way for a crate to make an arbitrary socket call that bypasses policy.
+
+---
+
+## Privacy Model
+
+These are defaults, not options:
+
+- **Third-party cookies blocked.** Cross-site tracking via cookies is off at the network layer.
+- **HTTPS enforced.** Downgrade attempts hard-fail. No warn-and-proceed for HTTP on HTTPS pages.
+- **HSTS preload list shipped with the binary.** Protection is immediate before the first visit.
+- **DNS-over-HTTPS.** Plaintext DNS leaks every domain you visit to your ISP and local network. DoH is the default once implemented.
+- **No DNS prefetch, no prefetch/preconnect.** These leak browsing intent to servers you never chose to contact.
+- **Canvas fingerprinting returns noise** for cross-origin contexts.
+- **Font enumeration blocked.** Your installed font list is a fingerprint.
+- **Battery API returns null.** Battery level is a fingerprinting vector.
+- **Referrer policy: `strict-origin-when-cross-origin`.** Pages cannot override this to expose full URLs to third parties.
+- **No disk storage of history, cookies, or cache** without explicit user opt-in. Everything lives in memory and is gone on close.
+- **Certificate errors hard-fail.** No click-through for invalid certificates.
+
+### Privacy Warnings
+
+When a site is on a tracker blocklist, uses forced third-party cookies, has no HTTPS, or presents an invalid certificate, Ferrum shows a full-page interstitial before loading anything. The warning is rendered locally — no network calls to generate it. It shows:
+
+1. The domain being visited
+2. The specific reason it was flagged (not a generic "this may be unsafe")
+3. Exactly what will be enabled if you proceed
+4. Two buttons: **Go back** (default focus) and **I understand — continue to [domain]**
+
+Permissions granted on the warning page apply to the current session only unless you check "Remember this for [domain]". They are stored in a plain `permissions.toml` you can inspect and edit. Permissions are per-origin — granting `example.com` does not grant `tracker.example.com`.
+
+---
+
+## JavaScript Engine
+
+Ferrum uses [Boa](https://boajs.dev/) — a pure-Rust ECMAScript bytecode compiler and VM. Current target version: v0.21 (94.12% test262 conformance, October 2025). Boa has no C++ dependencies, no network calls, and its full source is auditable.
+
+No V8. No SpiderMonkey. No JavaScriptCore. Embedding a C++ JS engine would be a memory-safety regression that undermines the entire reason for using Rust.
+
+JavaScript is disabled by default and enabled per-site via the permission system.
+
+### Bytecode VM, not JIT — and why
+
+Most browsers use a JIT (Just-In-Time) compiler: JavaScript is compiled to native machine code on the fly as hot code paths are detected, then executed directly by the CPU. This is fast. It is also a significant attack surface.
+
+Ferrum uses a bytecode VM: JavaScript is compiled to bytecode, which the VM interprets instruction by instruction. No native machine code is generated at runtime.
+
+The speed tradeoff is real and worth being honest about:
+
+**Sites that will work fine** — the vast majority of the web. News, social media, email, banking, GitHub, YouTube, shopping. The JavaScript on these pages is event-driven: respond to a click, fetch data, update the DOM. A bytecode VM handles this without issue.
+
+**Sites that will be noticeably slower** — compute-heavy workloads: browser-based 3D games (Unity WebGL, Three.js), Figma, large Google Docs/Sheets with complex formulas, in-browser crypto key derivation. These rely on tight loops running at high throughput. The difference between a JIT and a bytecode VM is perceptible here.
+
+**Sites that may not work acceptably** — real-time WebGL at 60fps, heavy in-browser video processing. These genuinely need JIT-level throughput.
+
+The reasoning for accepting this tradeoff:
+
+1. **JIT spraying is a documented browser attack class.** An attacker can craft JavaScript that causes the JIT compiler to write predictable patterns of machine code into executable memory, which they then exploit. For a browser whose identity is security and privacy, accepting this attack surface contradicts the core design.
+
+2. **The sites that need JIT speed are often the same sites with the most aggressive tracking.** Figma, Google Docs, WebGL-heavy games — these are not where privacy-conscious users spend most of their time.
+
+3. **The JIT compiler itself is the largest source of complexity and CVEs in V8 and SpiderMonkey.** Ferrum does not have the engineering resources to audit and maintain a JIT safely.
+
+4. **This is revisitable.** Boa's roadmap includes JIT work. If a well-audited JIT becomes available within the Boa ecosystem, the decision can be reconsidered. But "fast enough for everyday web use" is the correct bar to clear first.
+
+Before Boa is integrated, a full audit of its dependency tree is required and documented in `docs/decisions/boa-audit.md`.
+
+---
+
+## Networking Stack
+
+| Component | Library | Reason |
+|-----------|---------|--------|
+| TLS | `rustls` 0.23.36 | Pure Rust TLS. No OpenSSL. No Heartbleed-class vulnerabilities. |
+| DNS | `hickory-resolver` 0.25.2 | No system resolver (plaintext DNS = ISP surveillance). Supports DoH. |
+| Async runtime | `tokio` | Standard Rust async I/O. |
+| HTTP | HTTP/1.1 first, HTTP/2 planned | Build the foundation right before adding complexity. |
+
+Note: `rustls` uses `aws-lc-rs` as its default crypto backend, which links a C library. This is an accepted and documented tradeoff — the C is contained entirely within the crypto provider. The protocol implementation is pure Rust.
+
+---
+
+## Web Compatibility
+
+Ferrum targets the real modern web:
+
+- HTML5 (WHATWG Living Standard)
+- CSS3: Grid, Flexbox, custom properties, media queries, responsive images
+- ES2022 JavaScript
+- WebSockets, Fetch API, Web Workers, Canvas (with fingerprinting protection)
+- WOFF2 web fonts
+- gzip, deflate, brotli compression
+- Chunked transfer encoding
+- HTTP redirects
+
+Graceful degradation for unimplemented features — the browser must not crash or show a blank page because one CSS feature is missing. Compatibility regressions are tracked against real sites in `docs/compatibility-notes.md`.
+
+---
+
+## Browser UI
+
+The UI gets out of the way. The user came to visit a website, not to interact with the browser.
+
+**Start page:** Rendered entirely locally. No remote content, no news feed, no search suggestions loaded from a server, no "top sites" that phone home. A search bar and nothing else. Fast.
+
+**Address bar:** Shows the full URL. Never hides the protocol. HTTP sites display a persistent "Not secure" label — not a popup, always visible. Autocomplete from local history and bookmarks only. No keystrokes sent to a search engine before you press Enter.
+
+**Toolbar:** Back, forward, reload, address bar, privacy indicator, menu. Nothing else by default. The privacy indicator shows at a glance whether JavaScript is on, whether a tracker was blocked, and whether exceptions are active — one icon, expandable on click.
+
+**No onboarding flow.** No setup wizard. No tour. A first-time user should be able to navigate immediately.
+
+**Error pages** are honest and human-readable. "This site's certificate has expired" — not `ERR_CERT_DATE_INVALID`. Technical detail is available in a collapsed section for those who want it.
+
+Everything is keyboard navigable. `Ctrl+L` for the address bar. `Ctrl+T` for a new tab. Every action reachable without a mouse.
+
+---
+
+## What Ferrum Will Never Have
+
+- Telemetry, analytics, or crash reporting — not even opt-in
+- Auto-updates that phone home
+- AI features of any kind
+- Smart address bar suggestions that call external APIs
+- Sponsored content or partner integrations
+- DRM (DRM systems are identification systems by design)
+- Bundled tracking SDKs
+
+---
+
+## Building
+
 ```bash
-# Check if Git is installed
-git --version
+# Requires Rust stable ≥ 1.85 (project MSRV)
+rustup update stable
 
-# Check if GCC is installed
-g++ --version
+# Check the workspace compiles
+cargo check --workspace
 
-# Check if CMake is installed
-cmake --version
+# Run all tests
+cargo test --workspace
 
-# Check if MinGW Makefiles is installed
-mingw32-make --version
+# Lint (must pass before committing)
+cargo fmt --check
+cargo clippy --workspace -- -D warnings
+
+# Security audit
+cargo audit
 ```
-If any of these return "command not found," install the missing tool before proceeding.
 
-### **🔹 macOS/Linux Users**
-- [Git](https://git-scm.com/downloads)
-- GCC (pre-installed on most Linux distros, or install via Homebrew `brew install gcc`)
-- [CMake](https://cmake.org/download/)
-
-Verify installations with:
-```bash
-git --version
-g++ --version
-cmake --version
-make --version
-```
+Tier-1 targets: Linux x86_64, Linux aarch64, Windows x86_64. macOS: best effort.
 
 ---
 
-## **2️⃣ Project Structure**
-After cloning, the project structure will look like this:
-```
-browser/
-├── src/                  # Source code
-│   ├── main.cpp          # Entry point
-│   ├── Network/          # Networking Module (HTTP/HTTPS)
-│   ├── Parser/           # HTML Parser and DOM Engine
-│   ├── Renderer/         # Rendering Engine
-│   ├── JS_Engine/        # JavaScript Engine
-│   ├── Multimedia/       # Video and Audio Player
-│   └── Security/         # Privacy and Security Module
-├── include/              # Header files
-├── tests/                # Unit and Integration Tests
-├── CMakeLists.txt        # CMake Build Configuration
-├── .gitignore            # Ignored files
-├── README.md             # Project documentation
-```
+## Contributing
+
+Read `RULES.md` before writing any code. It is the single source of truth for how this codebase is written, structured, and maintained.
+
+Key rules in brief:
+
+- Rust 2024 edition. No C, no C++.
+- No `unwrap()` in library code.
+- Every public item needs a `///` doc comment.
+- Every commit needs a session log in `docs/sessions/`.
+- `cargo fmt` and `cargo clippy -D warnings` before every commit.
+- No new dependency without justification in the PR.
+
+The AI assistant working on this project reads `RULES.md` first, every time, before touching any code. On first load it checks whether `docs/FEATURE_LIST.md` exists and creates it if not.
 
 ---
 
-## **3️⃣ Building the Project**
+## License
 
-### **🔹 Windows (Git Bash or Command Prompt)**
-```bash
-# Create build directory
-mkdir build && cd build
+Ferrum is licensed under the **GNU General Public License v3.0 (GPL-3.0)**.
 
-# Run CMake to generate MinGW Makefiles
-cmake -G "MinGW Makefiles" ..
+Anyone who distributes a modified version of Ferrum — as source, binary, or embedded in a product — must release the complete corresponding source code under the same license. This applies without exception: individuals, companies, and devices alike.
 
-# Compile the project
-mingw32-make
-```
+GPL-3.0 specifically over GPL-2.0 because of the anti-Tivoization clause. GPL-2.0 allows a company to take this code, compile it into a device, and ship it in a form the user cannot modify — technically compliant but against the spirit. GPL-3.0 closes that loophole. A fork of Ferrum cannot be shipped in a locked-down product without the user retaining the right to modify and run their own version.
 
-### **🔹 macOS/Linux (Terminal)**
-```bash
-mkdir build && cd build
-cmake ..
-make
-```
-
-### **🟢 Run the Executable**
-After a successful build, run:
-```bash
-# Windows (Git Bash or CMD)
-./browser.exe
-
-# macOS/Linux
-./browser
-```
-
-Expected Output:
-```
-Custom Web Browser Starting...
-```
+See [LICENSE](LICENSE) for the full text.
 
 ---
 
-## **4️⃣ Phases Completed**
-
-### ✅ Phase 2: Architectural Design & Core Modules
-- Defined headers for:
-  - **HttpClient** – Handles HTTP/HTTPS requests and responses
-  - **HtmlParser** – Parses HTML into a structured DOM
-  - **Renderer** – Will handle layout and painting
-  - **JavaScriptEngine** – For script execution and DOM interaction
-  - **MediaPlayer** – For image/audio/video
-  - **SecurityManager** – For cookies, HTTPS rules, and content blocking
-
-### ✅ Phase 3: Networking (HTTP/HTTPS)
-- Implemented plain TCP HTTP client using sockets
-- Added OpenSSL for TLS support with:
-  - SSL Handshake using `SSL_connect`
-  - Encrypted reads/writes (`SSL_read`, `SSL_write`)
-  - Certificate validation via CA bundle
-- HTTPS is enforced for non-localhost addresses
-- Output contains raw HTML (including chunked transfer parts)
-
-Example Output:
-```
-37ae
-<!doctype html><html>...</html>
-```
-
----
-
-## **5️⃣ Future Phases (Planned)**
-
-### **🔜 Phase 4: HTML Parsing & DOM Tree Construction**
-- Implement a lexer/parser for HTML5
-- Build a DOM tree structure in memory
-
-### **🔜 Phase 5: CSS & Rendering Engine**
-- Apply styles using a basic box model and layout system
-- Visual rendering of DOM content
-
-### **🔜 Phase 6: JavaScript Execution**
-- Add a lightweight interpreter (like Duktape)
-- Enable interaction with the DOM through JavaScript
-
-### **🔜 Phase 7: Multimedia Support**
-- Add PNG/JPEG image decoding
-- Enable audio/video playback
-
-### **🔜 Phase 8: Privacy & Security**
-- Cookie isolation and management
-- Basic ad/tracker blocking
-- TLS enforcement features like HSTS, SNI
-
----
-
-## **💡 Contributing**
-Feel free to fork this project, submit pull requests, or suggest improvements via issues.
-
-Steps to contribute:
-1. Fork the repository
-2. Create a feature branch
-3. Commit your changes
-4. Open a pull request
-
----
-
-## **📞 Need Help?**
-If you run into issues, open a GitHub issue or reach out to caman1744@gmail.com!
-
-Happy coding! 🚀
+*Ferrum. It renders pages. It does not think about them, summarize them, or phone home about them.*

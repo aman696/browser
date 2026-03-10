@@ -1,0 +1,24 @@
+[package]
+name        = "net"
+version     = "0.1.0"
+edition.workspace    = true
+license.workspace    = true
+rust-version.workspace = true
+
+[dependencies]
+thiserror = { workspace = true }
+tokio     = { workspace = true }
+
+# TLS — rustls with aws-lc-rs crypto backend (OpenSSL is banned per RULES-04).
+# tls12 feature enabled for compatibility with servers that do not yet support TLS 1.3.
+rustls      = { version = "0.23", default-features = false, features = ["aws-lc-rs", "tls12"] }
+tokio-rustls = { version = "0.26" }
+webpki-roots = "0.26"
+
+# DNS — hickory-resolver with DNS-over-HTTPS via rustls (system resolver is banned per RULES-04).
+# Cloudflare 1.1.1.1 is the default DoH endpoint.
+# Feature names changed in 0.25: tokio-runtime→tokio, dns-over-https-rustls→https-aws-lc-rs
+hickory-resolver = { version = "0.25", features = ["tokio", "https-aws-lc-rs", "webpki-roots"] }
+
+# HTTP response header parsing — minimal, no_std, zero-copy.
+httparse = "1"

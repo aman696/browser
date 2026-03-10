@@ -1,0 +1,15 @@
+[package]
+name        = "js"
+version     = "0.1.0"
+edition.workspace    = true
+license.workspace    = true
+rust-version.workspace = true
+
+[dependencies]
+boa_engine = "0.21"
+thiserror = { workspace = true }
+
+# NOTE: boa_engine is NOT added here yet.
+# Per RULES-04-networking.md, a full cargo audit of boa_engine must be
+# performed and documented in docs/decisions/boa-audit.md before this
+# dependency is added to Cargo.toml.

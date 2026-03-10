@@ -1,11 +1,50 @@
-# Ignore compiled binaries
+# ── Rust / Cargo ──────────────────────────────────────────────────────────────
+/target/
+
+# Incremental compilation artifacts
+**/*.rs.bk
+
+# Profiling / coverage
+*.profraw
+*.profdata
+lcov.info
+tarpaulin-report.html
+tarpaulin-report.json
+
+# ── IDE / Editor ──────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.iml
+*.swp
+*.swo
+*~
+.DS_Store
+
+# ── System ────────────────────────────────────────────────────────────────────
+Thumbs.db
+desktop.ini
+
+# ── Old C++ build artifacts (now removed, but guard against accidental regen) ──
+build/
+*.o
+*.obj
+*.exe
 browser.exe
 browser
 
-# Ignore build directory
-build/
+# ── Ferrum-specific generated files ───────────────────────────────────────────
+# Browser profile data — always in-memory by default, never committed
+profile/
+*.ferrum-cache
+*.ferrum-cookies
 
-# Ignore temporary files
-*.o
-*.obj
-*.log
+# Fuzz corpus and artifacts
+fuzz/target/
+fuzz/corpus/
+fuzz/artifacts/
+
+# Benchmark output
+criterion/
+
+# ── AI agent working directory ─────────────────────────────────────────────────
+.agents/

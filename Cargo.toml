@@ -1,0 +1,23 @@
+[workspace]
+members = [
+    "crates/net",
+    "crates/html",
+    "crates/css",
+    "crates/layout",
+    "crates/render",
+    "crates/js",
+    "crates/security",
+    "crates/browser",
+]
+resolver = "2"
+
+[workspace.package]
+edition = "2024"
+license = "GPL-3.0-only"
+rust-version = "1.85.0"
+
+# Workspace-level dependency versions so all crates stay in sync.
+[workspace.dependencies]
+thiserror   = "2"
+bumpalo     = { version = "3", features = ["collections"] }
+tokio       = { version = "1", features = ["full"] }
