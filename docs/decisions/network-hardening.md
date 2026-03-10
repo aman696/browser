@@ -244,9 +244,12 @@ Sending them correctly establishes Ferrum as a well-behaved browser client for s
 ## 11. Referrer Policy — Never Leak Full URLs
 
 ### Decision
-Ferrum never adds a `Referer` header to outbound requests. When a `Referrer-Policy` response header is received, it is stored and applied to sub-resource requests from that page.
+Ferrum **never** adds a `Referer` header to outbound requests. This is enforced by omission — `build_request` in `http.rs` does not include `Referer` under any circumstance.
 
-The minimum policy enforced is `strict-origin-when-cross-origin` (as declared in `RULES-03`), which sends only the origin (`https://example.com`) on cross-origin requests — never the full path.
+> **Implementation status**: The "never send Referer" rule is fully implemented.
+> Parsing of incoming `Referrer-Policy` response headers and per-page policy storage
+> are **not yet implemented** — sub-resource fetches do not exist in the pipeline yet.
+> This section will be updated when the layout/resource-loading layer is built.
 
 ### Justification
 The `Referer` header leaks the URL of the page the user navigated *from*. This URL often contains sensitive information:
@@ -258,7 +261,7 @@ The `Referer` header leaks the URL of the page the user navigated *from*. This U
 
 Third-party resources (images, scripts, fonts, analytics pixels) embedded on a page automatically receive the full `Referer` of the page they are loaded from. This is the primary mechanism by which analytics companies build cross-site user profiles — every site with a Google Analytics script tells Google exactly what URL you visited.
 
-`strict-origin-when-cross-origin` sends only the origin scheme+host (e.g. `https://example.com`) on cross-origin requests. The page path is never shared. On same-origin requests (a link within the same site), the full URL is sent because the site already has that context.
+The minimum policy Ferrum will eventually enforce for sub-resource loads is `strict-origin-when-cross-origin`: only the origin scheme+host is sent on cross-origin requests — never the full path.
 
 ### References
 - MDN Referrer-Policy: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Referrer-Policy
@@ -303,6 +306,65 @@ The `crates/security` crate will query `NetworkContext` before requests are disp
 | Sec-Fetch-* headers | Cross-origin request forgery | W3C Fetch Metadata |
 | No Referer / strict-origin policy | Cross-site URL leakage | RULES-03 |
 | NetworkContext chokepoint | Policy bypass by any crate | RULES-04 |
+
+---
+
+## Known Gaps & Future Work
+
+The following security controls are **not yet implemented**. They are documented
+here so auditors and contributors can see the complete threat model, not just
+the subset that has been addressed.
+
+### Certificate Transparency (CT) Verification
+
+`rustls` validates the TLS certificate chain against trusted root CAs but does
+not verify Signed Certificate Timestamps (SCTs) from CT logs. A misissued
+certificate that was not logged to a public CT log would pass the current
+handshake silently.
+
+Proper CT requires:
+1. Consuming Google's CT log list (`cert_transparency_log_list.json`).
+2. Verifying the SCT signatures embedded in TLS extensions or the certificate itself.
+3. Hard-failing if no valid SCT is present for a domain that opts into CT.
+
+No production-ready Rust crate for this exists yet. **Track as future work.**
+
+### OCSP Stapling Verification
+
+`rustls` does not currently check OCSP stapled responses by default. Certificate
+revocation is not verified at connection time. An attacker with a stolen private
+key (and a revoked certificate) could still complete a valid TLS handshake.
+
+`rustls` exposes the raw OCSP staple bytes via `PeerCertificate`; a custom
+`ServerCertVerifier` can be built to check it. **Track as future work.**
+
+### Certificate Pinning
+
+Pinning is meaningful for Ferrum's own update server and DoH endpoint (1.1.1.1).
+For general browsing it is impractical (would require maintaining a pin database
+for every site). The DoH resolver endpoint is a good candidate for a hardcoded pin.
+**Track as future work.**
+
+### Response Compression / Fingerprinting
+
+Ferrum currently sends no `Accept-Encoding` header, which means servers default
+to uncompressed responses. This is a minor fingerprinting signal: a network
+observer can identify Ferrum as "the browser that never requests compression."
+
+Fixing this requires:
+1. Adding `flate2` (gzip/deflate) and `brotli` crate dependencies.
+2. Adding `Accept-Encoding: gzip, deflate, br` to `build_request`.
+3. Decompressing the response body in `parse_response` based on `Content-Encoding`.
+
+This is a performance and anti-fingerprinting improvement, not a security gap.
+**Track as future work.**
+
+### Referrer-Policy Response Header Parsing
+
+The `Referer` header is never sent (implemented). However, per-page enforcement
+of incoming `Referrer-Policy` response headers is not yet implemented — sub-resource
+loading doesn't exist in the pipeline yet. This will be addressed when the layout
+and resource-loading layers are built.
 
 ---
 
