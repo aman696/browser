@@ -28,9 +28,9 @@ desktop.ini
 build/
 *.o
 *.obj
-*.exe
-browser.exe
-browser
+# Compiled binary artifacts — root-only (prevents matching crates/browser/)
+/browser
+/browser.exe
 
 # ── Ferrum-specific generated files ───────────────────────────────────────────
 # Browser profile data — always in-memory by default, never committed
