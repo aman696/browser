@@ -13,7 +13,7 @@ resolver = "2"
 
 [workspace.package]
 edition = "2024"
-license = "GPL-3.0-only"
+license = "MPL-2.0"
 rust-version = "1.85.0"
 
 # Workspace-level dependency versions so all crates stay in sync.

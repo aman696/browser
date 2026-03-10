@@ -69,8 +69,12 @@ async fn fetch_step(ctx: &NetworkContext, url: String, depth: u8) -> Result<Stri
     // If this host was previously seen with an HSTS header, force HTTPS
     // regardless of what the parsed URL says.
     {
-        let hsts = ctx.hsts.lock().unwrap_or_else(|e| e.into_inner());
+        let hsts = ctx
+            .hsts
+            .lock()
+            .map_err(|_| FetchError::Protocol("HSTS store lock poisoned".into()))?;
         if hsts.is_hsts(&parsed.host) && !parsed.is_https {
+            drop(hsts); // release lock before mutating parsed
             parsed.is_https = true;
             parsed.port = "443".to_owned();
         }
@@ -106,7 +110,10 @@ async fn fetch_step(ctx: &NetworkContext, url: String, depth: u8) -> Result<Stri
     // ── 6. Record HSTS policy from response headers ───────────────────────
     if parsed.is_https {
         if let Some(sts_value) = &response.hsts_header {
-            let mut hsts = ctx.hsts.lock().unwrap_or_else(|e| e.into_inner());
+            let mut hsts = ctx
+                .hsts
+                .lock()
+                .map_err(|_| FetchError::Protocol("HSTS store lock poisoned".into()))?;
             hsts.record_from_header(&parsed.host, sts_value);
         }
     }
