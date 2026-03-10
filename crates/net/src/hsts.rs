@@ -75,9 +75,32 @@ impl HstsStore {
     pub fn record(&mut self, host: &str, max_age: u64, include_subdomains: bool) {
         // SECURITY: Cap entries to prevent unbounded memory growth from a
         // malicious redirect chain that inserts thousands of HSTS entries.
-        // When the cap is hit, evict everything — entries re-learn quickly.
+        //
+        // Two-phase eviction strategy:
+        //   Phase 1 — sweep genuinely expired entries (free wins, no data loss).
+        //   Phase 2 — if still at capacity, evict only the single entry whose
+        //             policy expires soonest. An attacker filling 10K fake entries
+        //             can only displace entries that were nearly expired anyway —
+        //             long-lived records (e.g. bank's 1-year STS) are immune.
+        //
+        // Previously used clear() which was a nuclear option: 10,001 attacker
+        // entries would wipe all HSTS state including the user's bank.
         if self.entries.len() >= MAX_HSTS_ENTRIES {
-            self.entries.clear();
+            let now = Instant::now();
+            // Phase 1: remove all expired entries first.
+            self.entries.retain(|_, e| e.expires > now);
+
+            // Phase 2: if still at cap, remove the one nearest to expiry.
+            if self.entries.len() >= MAX_HSTS_ENTRIES {
+                if let Some(evict_key) = self
+                    .entries
+                    .iter()
+                    .min_by_key(|(_, e)| e.expires)
+                    .map(|(k, _)| k.clone())
+                {
+                    self.entries.remove(&evict_key);
+                }
+            }
         }
 
         let expires = Instant::now() + Duration::from_secs(max_age);

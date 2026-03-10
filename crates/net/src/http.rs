@@ -67,7 +67,7 @@ pub fn build_request(host: &str, path: &str) -> String {
         "GET {path} HTTP/1.1\r\n\
          Host: {host}\r\n\
          Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8\r\n\
-         Accept-Encoding: gzip, deflate\r\n\
+         Accept-Encoding: identity\r\n\
          Accept-Language: en-US,en;q=0.5\r\n\
          Connection: close\r\n\
          Sec-Fetch-Site: none\r\n\
