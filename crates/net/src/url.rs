@@ -168,11 +168,9 @@ pub fn parse_url(input: &str) -> Result<ParsedUrl, UrlError> {
     let (host, port) = match host_and_port.find(':') {
         Some(colon) => (
             host_and_port[..colon].to_owned(),
-            host_and_port[colon + 1..]
-                .parse::<u16>()
-                .map_err(|_| UrlError::InvalidHost(format!(
-                    "invalid port '{}'", &host_and_port[colon + 1..]
-                )))?,
+            host_and_port[colon + 1..].parse::<u16>().map_err(|_| {
+                UrlError::InvalidHost(format!("invalid port '{}'", &host_and_port[colon + 1..]))
+            })?,
         ),
         None => {
             let default_port: u16 = if is_https { 443 } else { 80 };

@@ -228,8 +228,8 @@ mod tests {
     #[test]
     fn test_hsts_parse_header() {
         let mut store = HstsStore::new();
-        let recorded = store
-            .record_from_header("example.com", "max-age=31536000; includeSubDomains");
+        let recorded =
+            store.record_from_header("example.com", "max-age=31536000; includeSubDomains");
         assert!(recorded);
         assert!(store.is_hsts("example.com"));
         assert!(store.is_hsts("sub.example.com"));

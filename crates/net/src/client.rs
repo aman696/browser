@@ -156,27 +156,27 @@ async fn fetch_step(ctx: &NetworkContext, url: String, depth: u8) -> Result<Stri
             // BUGFIX: rsplitn(2,'/').last() on a full URL gives the scheme
             // ("https:"), not the directory. Instead, find the last '/' that
             // comes after the authority ("://") and strip from there.
-            let next_url =
-                if location.starts_with("https://") || location.starts_with("http://") {
-                    location
-                } else if location.starts_with('/') {
-                    let scheme = if parsed.is_https { "https" } else { "http" };
-                    format!("{scheme}://{}:{}{location}", parsed.host, parsed.port)
-                } else {
-                    // Relative path: strip everything after the last '/' in the
-                    // current path so we resolve against the directory, not the file.
-                    let dir = parsed.path
-                        .rfind('/')
-                        .map(|i| &parsed.path[..=i])
-                        .unwrap_or("/");
-                    let scheme = if parsed.is_https { "https" } else { "http" };
-                    format!("{scheme}://{}:{}{dir}{location}", parsed.host, parsed.port)
-                };
+            let next_url = if location.starts_with("https://") || location.starts_with("http://") {
+                location
+            } else if location.starts_with('/') {
+                let scheme = if parsed.is_https { "https" } else { "http" };
+                format!("{scheme}://{}:{}{location}", parsed.host, parsed.port)
+            } else {
+                // Relative path: strip everything after the last '/' in the
+                // current path so we resolve against the directory, not the file.
+                let dir = parsed
+                    .path
+                    .rfind('/')
+                    .map(|i| &parsed.path[..=i])
+                    .unwrap_or("/");
+                let scheme = if parsed.is_https { "https" } else { "http" };
+                format!("{scheme}://{}:{}{dir}{location}", parsed.host, parsed.port)
+            };
 
-        // TODO(#7): Connection reuse / keep-alive.
-        // Every fetch currently does full DNS → TCP → TLS per request.
-        // With Connection: close, 30 sub-resources = 30 full handshakes.
-        // HTTP/1.1 keep-alive is the minimum viable fix before sub-resource loading.
+            // TODO(#7): Connection reuse / keep-alive.
+            // Every fetch currently does full DNS → TCP → TLS per request.
+            // With Connection: close, 30 sub-resources = 30 full handshakes.
+            // HTTP/1.1 keep-alive is the minimum viable fix before sub-resource loading.
 
             // SECURITY: Re-parse the redirect URL through `parse_url` so that
             // HTTPS enforcement, userinfo rejection, and fragment stripping are
