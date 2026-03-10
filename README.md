@@ -231,11 +231,12 @@ The AI assistant working on this project reads `RULES.md` first, every time, bef
 
 ## License
 
-Ferrum is licensed under the **GNU General Public License v3.0 (GPL-3.0)**.
+Ferrum is licensed under the **Mozilla Public License Version 2.0 (MPL 2.0)**.
 
-Anyone who distributes a modified version of Ferrum — as source, binary, or embedded in a product — must release the complete corresponding source code under the same license. This applies without exception: individuals, companies, and devices alike.
-
-GPL-3.0 specifically over GPL-2.0 because of the anti-Tivoization clause. GPL-2.0 allows a company to take this code, compile it into a device, and ship it in a form the user cannot modify — technically compliant but against the spirit. GPL-3.0 closes that loophole. A fork of Ferrum cannot be shipped in a locked-down product without the user retaining the right to modify and run their own version.
+MPL 2.0 is a simple, file-level copyleft license. This means:
+- You are free to use Ferrum's browser engine crates as a library inside your own closed-source, proprietary application.
+- However, if you modify Ferrum's *original source files* directly to improve the engine, you must publish those specific files under the same MPL 2.0 license so the community benefits.
+- It strikes a balance: it protects the open-source nature of the browser engine itself, but does not aggressively "infect" external proprietary apps that merely embed it.
 
 See [LICENSE](LICENSE) for the full text.
 
