@@ -1,10 +1,7 @@
 //! TLS client configuration for Ferrum using [`rustls`] with the
 //! `aws-lc-rs` cryptographic backend.
 //!
-//! Per `RULES-04-networking.md`:
-//! - OpenSSL is **banned**. `rustls` is mandatory.
-//! - The `aws-lc-rs` backend is mandatory. `ring` is not used.
-//! - Certificate errors **hard-fail**. There is no click-through.
+
 //!
 //! Root certificate trust is provided by [`webpki_roots`], which ships
 //! Mozilla's curated list of trusted CA certificates as a compiled-in
@@ -54,6 +51,39 @@ pub fn build_config() -> Result<Arc<ClientConfig>, FetchError> {
     ])
     .with_root_certificates(root_store)
     .with_no_client_auth();
+
+    // ── TODO(CT): Certificate Transparency verification ────────────────────
+    //
+    // What CT is:
+    //   Certificate Transparency (RFC 9162) requires CAs to log every issued
+    //   certificate to a public, append-only log. A Signed Certificate
+    //   Timestamp (SCT) is proof that a cert was logged. Browsers that enforce
+    //   CT will reject certificates without at least two valid SCTs.
+    //
+    // The gap today:
+    //   `rustls` validates the cert chain against trusted roots (webpki-roots)
+    //   but does NOT verify SCTs. A CA-misissued certificate — one that was
+    //   never submitted to any CT log — would pass the current handshake with
+    //   no error. This has happened in practice (DigiNotar 2011, Symantec 2017).
+    //
+    // Why it is left incomplete (intentionally):
+    //   1. No production-ready Rust crate exists for SCT signature verification
+    //      as of 2026-03. The `certificate-transparency` crate is abandoned.
+    //   2. Requires consuming Google's CT log list JSON at compile/startup time:
+    //      https://www.gstatic.com/ct/log_list/v3/all_logs_list.json
+    //   3. `rustls` exposes SCT bytes via `PeerCertificate::cert.as_der()` and
+    //      the TLS extension `SCT` (type 18) — parsing requires DER decoding.
+    //
+    // Implementation path when ready:
+    //   1. Implement a custom `rustls::client::danger::ServerCertVerifier` that
+    //      wraps `WebPkiServerVerifier` and adds SCT validation on top.
+    //   2. Call `.with_custom_certificate_verifier(Arc::new(FerrumsCtVerifier))`
+    //      instead of `.with_root_certificates(root_store).with_no_client_auth()`.
+    //   3. Hard-fail (`FetchError::Tls`) if < 2 valid SCTs are present.
+    //   4. Bundle the CT log list as a compiled-in constant (like `webpki-roots`).
+    //
+    // Reference: RFC 9162 — https://www.rfc-editor.org/rfc/rfc9162
+    // ──────────────────────────────────────────────────────────────────────────
 
     Ok(Arc::new(config))
 }
