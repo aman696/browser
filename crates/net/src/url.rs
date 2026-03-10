@@ -34,11 +34,11 @@ pub struct ParsedUrl {
     /// The host portion of the URL, e.g. `"example.com"` or `"localhost"`.
     pub host: String,
 
-    /// The TCP port to connect to, e.g. `"443"` or `"80"`.
+    /// The TCP port to connect to, e.g. `443` or `80`.
     ///
     /// Derived from the URL's explicit port if present, otherwise inferred
-    /// from the scheme: `"443"` for HTTPS, `"80"` for HTTP.
-    pub port: String,
+    /// from the scheme: `443` for HTTPS, `80` for HTTP.
+    pub port: u16,
 
     /// The path and query portion of the URL, always starting with `/`.
     ///
@@ -168,11 +168,15 @@ pub fn parse_url(input: &str) -> Result<ParsedUrl, UrlError> {
     let (host, port) = match host_and_port.find(':') {
         Some(colon) => (
             host_and_port[..colon].to_owned(),
-            host_and_port[colon + 1..].to_owned(),
+            host_and_port[colon + 1..]
+                .parse::<u16>()
+                .map_err(|_| UrlError::InvalidHost(format!(
+                    "invalid port '{}'", &host_and_port[colon + 1..]
+                )))?,
         ),
         None => {
-            let default_port = if is_https { "443" } else { "80" };
-            (host_and_port.to_owned(), default_port.to_owned())
+            let default_port: u16 = if is_https { 443 } else { 80 };
+            (host_and_port.to_owned(), default_port)
         }
     };
 
@@ -182,7 +186,7 @@ pub fn parse_url(input: &str) -> Result<ParsedUrl, UrlError> {
     // Silently upgrade all remote HTTP to HTTPS. The privacy warning system
     // will surface this to the user when implemented in `crates/security`.
     let (is_https, port) = if !is_localhost && !is_https {
-        (true, "443".to_owned())
+        (true, 443u16)
     } else {
         (is_https, port)
     };
@@ -204,7 +208,7 @@ mod tests {
     fn test_parse_url_https() {
         let result = parse_url("https://example.com/index.html").unwrap();
         assert_eq!(result.host, "example.com");
-        assert_eq!(result.port, "443");
+        assert_eq!(result.port, 443);
         assert_eq!(result.path, "/index.html");
         assert!(result.is_https);
         assert!(!result.is_localhost);
@@ -215,7 +219,7 @@ mod tests {
         // SECURITY: HTTP to a remote host is silently upgraded to HTTPS.
         let result = parse_url("http://example.com").unwrap();
         assert!(result.is_https);
-        assert_eq!(result.port, "443");
+        assert_eq!(result.port, 443);
     }
 
     #[test]
@@ -224,7 +228,7 @@ mod tests {
         let result = parse_url("http://localhost:8080/api").unwrap();
         assert!(!result.is_https);
         assert!(result.is_localhost);
-        assert_eq!(result.port, "8080");
+        assert_eq!(result.port, 8080);
         assert_eq!(result.path, "/api");
     }
 

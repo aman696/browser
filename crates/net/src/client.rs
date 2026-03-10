@@ -76,7 +76,7 @@ async fn fetch_step(ctx: &NetworkContext, url: String, depth: u8) -> Result<Stri
         if hsts.is_hsts(&parsed.host) && !parsed.is_https {
             drop(hsts); // release lock before mutating parsed
             parsed.is_https = true;
-            parsed.port = "443".to_owned();
+            parsed.port = 443;
         }
     }
 
@@ -84,25 +84,41 @@ async fn fetch_step(ctx: &NetworkContext, url: String, depth: u8) -> Result<Stri
     let ip = dns::resolve(&ctx.resolver, &parsed.host).await?;
 
     // ── 3. TCP connection (with timeout) ───────────────────────────────────
-    let port: u16 = parsed
-        .port
-        .parse()
-        .map_err(|_| FetchError::Protocol(format!("invalid port '{}'", parsed.port)))?;
-
-    let addr = SocketAddr::new(ip, port);
+    let addr = SocketAddr::new(ip, parsed.port);
     let tcp = timeout(CONNECT_TIMEOUT, TcpStream::connect(addr))
         .await
         .map_err(|_| FetchError::Timeout)?
         .map_err(|e| FetchError::Io(e.to_string()))?;
 
+    // PERF: Disable Nagle's algorithm. Without this, a single small write
+    // (our HTTP request) may be buffered up to 40ms before being sent.
+    // Every real browser sets TCP_NODELAY on all HTTP sockets.
+    tcp.set_nodelay(true)
+        .map_err(|e| FetchError::Io(format!("set_nodelay: {e}")))?;
+
+    // TODO(#10): Multi-IP fallback (Happy Eyeballs / RFC 8305).
+    // If TcpStream::connect fails, retry with the next IP from the DNS lookup.
+    // Currently dns::resolve returns only the first IP, so CDN-hosted sites with
+    // many A records will fail the whole request if the first IP is unreachable.
+
     // ── 4. Send request + read response (with timeout) ────────────────────
     let request = http::build_request(&parsed.host, &parsed.path);
+    // TODO(#12): Separate TLS handshake and response-read timeouts.
+    // Currently READ_TIMEOUT covers TLS connect + write + read combined.
+    // A slow 25s TLS handshake leaves only 5s for the body read.
+    // Ideal: HANDSHAKE_TIMEOUT (10s) + READ_TIMEOUT (30s) applied separately.
     let raw_response = timeout(
         READ_TIMEOUT,
         send_and_read(ctx, tcp, &parsed, request.as_bytes()),
     )
     .await
     .map_err(|_| FetchError::Timeout)??;
+
+    // TODO(#8): Triple-allocation for response body.
+    // read_all builds Vec<u8>, parse_response may build a second Vec<u8> for
+    // decoded chunks, then String::from_utf8_lossy builds a third String.
+    // For a 49 MB page this is ~147 MB peak RAM. Acceptable now (no real pages
+    // loaded yet); must change to streaming before sub-resource loading arrives.
 
     // ── 5. Parse response ─────────────────────────────────────────────────
     let response = http::parse_response(&raw_response)?;
@@ -137,16 +153,30 @@ async fn fetch_step(ctx: &NetworkContext, url: String, depth: u8) -> Result<Stri
             }
 
             // Resolve relative redirects against the current origin.
+            // BUGFIX: rsplitn(2,'/').last() on a full URL gives the scheme
+            // ("https:"), not the directory. Instead, find the last '/' that
+            // comes after the authority ("://") and strip from there.
             let next_url =
                 if location.starts_with("https://") || location.starts_with("http://") {
                     location
                 } else if location.starts_with('/') {
                     let scheme = if parsed.is_https { "https" } else { "http" };
-                    format!("{scheme}://{}:{}{}", parsed.host, parsed.port, location)
+                    format!("{scheme}://{}:{}{location}", parsed.host, parsed.port)
                 } else {
-                    let base = url.rsplitn(2, '/').last().unwrap_or(url.as_str());
-                    format!("{base}/{location}")
+                    // Relative path: strip everything after the last '/' in the
+                    // current path so we resolve against the directory, not the file.
+                    let dir = parsed.path
+                        .rfind('/')
+                        .map(|i| &parsed.path[..=i])
+                        .unwrap_or("/");
+                    let scheme = if parsed.is_https { "https" } else { "http" };
+                    format!("{scheme}://{}:{}{dir}{location}", parsed.host, parsed.port)
                 };
+
+        // TODO(#7): Connection reuse / keep-alive.
+        // Every fetch currently does full DNS → TCP → TLS per request.
+        // With Connection: close, 30 sub-resources = 30 full handshakes.
+        // HTTP/1.1 keep-alive is the minimum viable fix before sub-resource loading.
 
             // SECURITY: Re-parse the redirect URL through `parse_url` so that
             // HTTPS enforcement, userinfo rejection, and fragment stripping are

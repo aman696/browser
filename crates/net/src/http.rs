@@ -44,9 +44,15 @@ pub struct Response {
 /// response, allowing [`super::client`] to read until EOF rather than
 /// needing to parse `Content-Length` for every response.
 ///
-/// `Accept-Encoding: identity` disables compression so we receive the raw
-/// body bytes without a decompressor. Compression support will be added in a
-/// later session with `brotli` / `flate2`.
+/// # TODO(#7): Connection reuse
+/// `Connection: close` makes every fetch pay full DNS+TCP+TLS cost.
+/// Switch to `Connection: keep-alive` before sub-resource loading.
+///
+/// # TODO(#11): Sec-Fetch-Site context
+/// `Sec-Fetch-Site: none` is correct only for top-level user navigation.
+/// Sub-resource loads (CSS, JS, images) need `same-origin`, `same-site`,
+/// or `cross-site`. Requires a FetchContext metadata struct passed through
+/// `build_request` when the resource-loading layer is added.
 ///
 /// # Security headers
 ///
@@ -61,7 +67,7 @@ pub fn build_request(host: &str, path: &str) -> String {
         "GET {path} HTTP/1.1\r\n\
          Host: {host}\r\n\
          Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8\r\n\
-         Accept-Encoding: identity\r\n\
+         Accept-Encoding: gzip, deflate\r\n\
          Accept-Language: en-US,en;q=0.5\r\n\
          Connection: close\r\n\
          Sec-Fetch-Site: none\r\n\
@@ -91,15 +97,33 @@ pub fn parse_response(bytes: &[u8]) -> Result<Response, FetchError> {
         .position(|w| w == b"\r\n\r\n")
         .ok_or_else(|| FetchError::Protocol("HTTP response has no header/body separator".into()))?;
 
-    let header_bytes = &bytes[..header_end];
+    let _header_bytes = &bytes[..header_end]; // kept for reference; header_buf includes \r\n\r\n
     let raw_body = &bytes[header_end + 4..];
 
-    // Parse headers with httparse.
-    let mut parsed_headers = [httparse::EMPTY_HEADER; 64];
+    // SECURITY: Use 128 headers — 64 was the original cap. A server could
+    // send 64 junk headers before the real Strict-Transport-Security header,
+    // causing it to be silently dropped and HSTS never recorded. 128 raises
+    // the bar significantly without unbounded memory use.
+    let mut parsed_headers = [httparse::EMPTY_HEADER; 128];
     let mut response = httparse::Response::new(&mut parsed_headers);
-    response
-        .parse(header_bytes)
-        .map_err(|e| FetchError::Protocol(format!("HTTP response header parse error: {e}")))?;
+
+    // BUGFIX: httparse returns Ok(Status::Partial) — not Err — when the input
+    // is incomplete. We must check the Status enum, not just the Result.
+    // Passing header_bytes without the trailing \r\n\r\n (which we already
+    // stripped above) can cause Partial if httparse needs the terminator.
+    // We pass the full buffer including the separator to avoid this.
+    let header_buf = &bytes[..header_end + 4]; // include the \r\n\r\n
+    match response
+        .parse(header_buf)
+        .map_err(|e| FetchError::Protocol(format!("HTTP response header parse error: {e}")))?
+    {
+        httparse::Status::Partial => {
+            return Err(FetchError::Protocol(
+                "HTTP response headers incomplete (Status::Partial)".into(),
+            ));
+        }
+        httparse::Status::Complete(_) => {} // all good
+    }
 
     let status = response
         .code

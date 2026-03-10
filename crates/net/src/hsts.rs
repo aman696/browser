@@ -27,6 +27,14 @@ struct HstsEntry {
     include_subdomains: bool,
 }
 
+/// Maximum number of HSTS entries to keep in the in-memory store.
+///
+/// Without a cap a malicious redirect chain could insert thousands of entries
+/// per session, growing the HashMap without bound. Real browsers cap HSTS at
+/// ~10,000 entries. When the cap is hit we evict the entire map — entries are
+/// cheap to re-learn from the next HTTPS response.
+const MAX_HSTS_ENTRIES: usize = 10_000;
+
 /// In-memory store for HSTS domain policies.
 ///
 /// Created and owned by [`NetworkContext`]. All access is single-threaded
@@ -65,6 +73,13 @@ impl HstsStore {
     /// - `max_age`: Seconds the policy should be considered valid (from the `max-age` directive).
     /// - `include_subdomains`: Whether the `includeSubDomains` directive was present.
     pub fn record(&mut self, host: &str, max_age: u64, include_subdomains: bool) {
+        // SECURITY: Cap entries to prevent unbounded memory growth from a
+        // malicious redirect chain that inserts thousands of HSTS entries.
+        // When the cap is hit, evict everything — entries re-learn quickly.
+        if self.entries.len() >= MAX_HSTS_ENTRIES {
+            self.entries.clear();
+        }
+
         let expires = Instant::now() + Duration::from_secs(max_age);
         self.entries.insert(
             host.to_ascii_lowercase(),
