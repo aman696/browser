@@ -19,7 +19,7 @@ tarpaulin-report.json
 *.swo
 *~
 .DS_Store
-
+tmp
 # ── System ────────────────────────────────────────────────────────────────────
 Thumbs.db
 desktop.ini

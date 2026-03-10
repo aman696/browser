@@ -7,7 +7,7 @@ rust-version.workspace = true
 
 [dependencies]
 thiserror = { workspace = true }
-tokio     = { workspace = true }
+tokio     = { workspace = true, features = ["time"] }
 
 # TLS — rustls with aws-lc-rs crypto backend (OpenSSL is banned per RULES-04).
 # tls12 feature enabled for compatibility with servers that do not yet support TLS 1.3.
