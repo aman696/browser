@@ -75,6 +75,14 @@ pub enum UrlError {
     /// interfaces, and other malformed host strings.
     #[error("invalid host in URL: {0}")]
     InvalidHost(String),
+
+    /// The path or query string contains a CR or LF character.
+    ///
+    /// `\r` and `\n` in the path would be injected verbatim into the HTTP
+    /// request line, allowing an attacker-controlled URL to insert arbitrary
+    /// headers or split the request (HTTP request-line injection / CRLF injection).
+    #[error("URL path contains invalid characters (CR or LF not allowed)")]
+    InvalidPath,
 }
 
 /// Parse a raw URL string into a [`ParsedUrl`].
@@ -136,7 +144,16 @@ pub fn parse_url(input: &str) -> Result<ParsedUrl, UrlError> {
         None => (rest, "/".to_owned()),
     };
 
-    // ── 4. Security: reject userinfo (`user:pass@host`) ───────────────────
+    // ── 4. Security: reject CRLF in path ──────────────────────────────────
+    // \r or \n in the path would be injected verbatim into the HTTP/1.1
+    // request line ("GET {path} HTTP/1.1\r\n..."), letting an attacker
+    // terminate the request line early and inject arbitrary headers.
+    // This is HTTP request-line injection (a form of CRLF injection).
+    if path.contains('\r') || path.contains('\n') {
+        return Err(UrlError::InvalidPath);
+    }
+
+    // ── 5. Security: reject userinfo (`user:pass@host`) ───────────────────
     // `@` in the host portion is a phishing vector. `bank.com@evil.com`
     // looks legitimate but routes to `evil.com`. All major browsers reject
     // this pattern per the WHATWG URL spec §5.1.
@@ -144,7 +161,7 @@ pub fn parse_url(input: &str) -> Result<ParsedUrl, UrlError> {
         return Err(UrlError::UserInfoNotAllowed);
     }
 
-    // ── 5. Security: reject IPv6 Zone IDs ─────────────────────────────────
+    // ── 6. Security: reject IPv6 Zone IDs ─────────────────────────────────
     // `[fe80::1%eth0]` has a `%` inside square brackets, indicating a Zone ID.
     // Zone IDs specify a network interface and can probe local interfaces that
     // should not be accessible from the browser (RFC 6874).
@@ -164,7 +181,7 @@ pub fn parse_url(input: &str) -> Result<ParsedUrl, UrlError> {
         }
     }
 
-    // ── 6. Split host from optional port ──────────────────────────────────
+    // ── 7. Split host from optional port ──────────────────────────────────
     let (host, port) = match host_and_port.find(':') {
         Some(colon) => (
             host_and_port[..colon].to_owned(),
@@ -363,5 +380,28 @@ mod tests {
 
         let result = parse_url("http://127.255.255.255:8080/").unwrap();
         assert!(result.is_localhost);
+    }
+
+    #[test]
+    fn test_crlf_in_path_is_rejected() {
+        // SECURITY: \r or \n in the path would be injected into the HTTP request
+        // line verbatim, allowing an attacker to inject arbitrary headers.
+        assert_eq!(
+            parse_url("https://example.com/page\r\nX-Injected: evil"),
+            Err(UrlError::InvalidPath)
+        );
+        assert_eq!(
+            parse_url("https://example.com/page\nX-Injected: evil"),
+            Err(UrlError::InvalidPath)
+        );
+        assert_eq!(
+            parse_url("https://example.com/page\r"),
+            Err(UrlError::InvalidPath)
+        );
+        // Query strings are also covered since they're part of the path field.
+        assert_eq!(
+            parse_url("https://example.com/search?q=foo\r\nbar"),
+            Err(UrlError::InvalidPath)
+        );
     }
 }
