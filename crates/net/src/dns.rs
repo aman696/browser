@@ -116,13 +116,22 @@ fn is_private_ip(ip: IpAddr) -> bool {
     match ip {
         IpAddr::V4(ipv4) => {
             let octets = ipv4.octets();
-            ipv4.is_loopback()
-                || ipv4.is_unspecified()
-                || octets[0] == 0
-                || octets[0] == 10
-                || (octets[0] == 172 && (octets[1] >= 16 && octets[1] <= 31))
-                || (octets[0] == 192 && octets[1] == 168)
-                || (octets[0] == 169 && octets[1] == 254)
+            ipv4.is_loopback()   // 127.0.0.0/8
+                || ipv4.is_unspecified() // 0.0.0.0/8
+                || octets[0] == 0        // 0.0.0.0/8 (RFC 1122 — "this" network)
+                || octets[0] == 10       // 10.0.0.0/8 (RFC 1918 private)
+                || (octets[0] == 172 && (16..=31).contains(&octets[1])) // 172.16.0.0/12 (RFC 1918)
+                || (octets[0] == 192 && octets[1] == 168) // 192.168.0.0/16 (RFC 1918)
+                || (octets[0] == 169 && octets[1] == 254) // 169.254.0.0/16 link-local (RFC 3927)
+                // SECURITY: RFC 6598 — Carrier-Grade NAT (100.64.0.0/10). ISPs use this range
+                // internally; a DNS record resolving here could reach ISP infrastructure.
+                || (octets[0] == 100 && (64..=127).contains(&octets[1])) // 100.64.0.0/10 CGNAT
+                // SECURITY: IETF protocol/documentation reserved ranges (RFC 5737, RFC 6890).
+                // These should never appear as real server addresses; block to prevent confusion.
+                || (octets[0] == 192 && octets[1] == 0 && octets[2] == 0) // 192.0.0.0/24
+                || (octets[0] == 192 && octets[1] == 0 && octets[2] == 2) // 192.0.2.0/24 TEST-NET-1
+                || (octets[0] == 198 && octets[1] == 51 && octets[2] == 100) // 198.51.100.0/24 TEST-NET-2
+                || (octets[0] == 203 && octets[1] == 0 && octets[2] == 113) // 203.0.113.0/24 TEST-NET-3
         }
         IpAddr::V6(ipv6) => {
             let segments = ipv6.segments();
@@ -163,6 +172,18 @@ mod tests {
         assert!(!is_private_ip("1.1.1.1".parse().unwrap()));
         assert!(!is_private_ip("93.184.216.34".parse().unwrap()));
         assert!(is_private_ip("::1".parse().unwrap()));
+
+        // CGNAT 100.64.0.0/10 (RFC 6598) — ISP-internal range, must be blocked.
+        assert!(is_private_ip("100.64.0.1".parse().unwrap()));
+        assert!(is_private_ip("100.127.255.255".parse().unwrap()));
+        assert!(!is_private_ip("100.63.255.255".parse().unwrap())); // just outside
+        assert!(!is_private_ip("100.128.0.0".parse().unwrap())); // just outside
+
+        // IETF reserved / documentation ranges (RFC 5737, RFC 6890).
+        assert!(is_private_ip("192.0.0.1".parse().unwrap()));
+        assert!(is_private_ip("192.0.2.1".parse().unwrap()));
+        assert!(is_private_ip("198.51.100.1".parse().unwrap()));
+        assert!(is_private_ip("203.0.113.1".parse().unwrap()));
 
         // SECURITY: IPv4-mapped IPv6 addresses must be treated as their IPv4 equivalent.
         // An attacker can serve ::ffff:192.168.1.1 as an AAAA record; without this check
