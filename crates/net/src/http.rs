@@ -216,9 +216,57 @@ fn decode_chunked(data: &[u8]) -> Result<Vec<u8>, FetchError> {
             )));
         }
 
+        // SECURITY: Verify the trailing CRLF after the chunk data exists before
+        // advancing pos. Without this check a hostile server that omits the CRLF
+        // causes chunk_end + 2 to overshoot data.len(), making the next iteration's
+        // slice index panic or silently skip data (depending on the loop guard).
+        if chunk_end + 2 > data.len() {
+            return Err(FetchError::Protocol(
+                "chunked encoding: missing CRLF after chunk data".into(),
+            ));
+        }
+        if data[chunk_end..chunk_end + 2] != *b"\r\n" {
+            return Err(FetchError::Protocol(
+                "chunked encoding: expected CRLF after chunk data".into(),
+            ));
+        }
+
         result.extend_from_slice(&data[pos..chunk_end]);
         pos = chunk_end + 2; // skip chunk data + CRLF
     }
 
     Ok(result)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_decode_chunked_happy_path() {
+        let input = b"5\r\nHello\r\n6\r\n World\r\n0\r\n\r\n";
+        let result = decode_chunked(input).unwrap();
+        assert_eq!(result, b"Hello World");
+    }
+
+    #[test]
+    fn test_decode_chunked_missing_trailing_crlf_returns_error() {
+        // Hostile server omits the \r\n after chunk data — must not panic.
+        let input = b"5\r\nHello0\r\n\r\n"; // no \r\n after "Hello"
+        assert!(decode_chunked(input).is_err());
+    }
+
+    #[test]
+    fn test_decode_chunked_chunk_overruns_data_returns_error() {
+        // Chunk size claims more bytes than are available.
+        let input = b"ff\r\ntooshort\r\n0\r\n\r\n";
+        assert!(decode_chunked(input).is_err());
+    }
+
+    #[test]
+    fn test_decode_chunked_wrong_crlf_after_data_returns_error() {
+        // Trailing bytes after chunk are not \r\n.
+        let input = b"5\r\nHelloXX0\r\n\r\n";
+        assert!(decode_chunked(input).is_err());
+    }
 }
