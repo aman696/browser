@@ -57,7 +57,12 @@ pub fn tokenize(html: &str) -> Vec<Token> {
             }
 
             // DOCTYPE: <!DOCTYPE ...>
-            if html[i..].to_ascii_lowercase().starts_with("<!doctype") {
+            // PERF: Previously `html[i..].to_ascii_lowercase().starts_with("<!doctype")`
+            // allocated and lowercased the *entire remaining input* on every `<` character —
+            // O(n²) behaviour on any non-trivial HTML file. Fix: slice to exactly 9 bytes
+            // and use eq_ignore_ascii_case() which does a zero-allocation byte-by-byte
+            // comparison, making this O(1) per `<` character.
+            if html[i..].len() >= 9 && html[i..i + 9].eq_ignore_ascii_case("<!doctype") {
                 let close = html[i..].find('>').map(|p| i + p).unwrap_or(len);
                 tokens.push(Token::text_or_comment(TokenKind::Doctype, ""));
                 i = close + 1;
