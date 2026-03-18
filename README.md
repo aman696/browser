@@ -10,7 +10,7 @@ Ferrum renders the modern web without surveilling you while doing it. No telemet
 
 Ferrum is a browser engine being rewritten from a C++ prototype into idiomatic Rust. The rewrite is not a line-for-line translation — it is a ground-up reimplementation using Rust's ownership model, arena allocation, and async I/O to eliminate the classes of bugs that make browsers a primary attack surface.
 
-The privacy model is not a feature toggle. It is the architecture. Third-party cookies are blocked at the network layer. DNS queries are encrypted by default. Canvas fingerprinting returns noise. The HSTS preload list ships with the binary. History and cache do not touch disk unless you explicitly opt in.
+The privacy model is not a feature toggle. It is the architecture. DNS queries are encrypted by default via DNS-over-HTTPS. HTTPS is enforced and downgrades hard-fail. History and cache do not touch disk unless you explicitly opt in. Third-party cookie blocking, canvas fingerprinting noise, and the HSTS preload list are planned defaults — not yet implemented.
 
 The browser is designed to work on the real modern web — not a sandboxed subset of it. If a mainstream site requires it, Ferrum supports it. Compatibility is not sacrificed for privacy; they are managed as a tradeoff, transparently, with the user in control.
 
@@ -36,12 +36,12 @@ No OpenSSL. No system resolver. No C FFI except where strictly contained (the `a
 | URL parser (`crates/net`) | ✅ Complete — HTTPS enforcement, full test suite |
 | HTML tokenizer (`crates/html`) | ✅ Complete — raw-text mode, WHATWG-aligned |
 | HTML parser + DOM (`crates/html`) | ✅ Complete — arena allocation, error recovery |
-| HTTP/HTTPS fetch (`crates/net`) | 🔲 Stub — `rustls` + `tokio` + `hickory-resolver` pending |
+| HTTP/HTTPS fetch (`crates/net`) | ✅ Complete — TLS (rustls), DoH (hickory), HSTS, redirects, SSRF guard |
 | CSS parsing (`crates/css`) | 🔲 Not started |
 | Layout engine (`crates/layout`) | 🔲 Not started |
 | Renderer (`crates/render`) | 🔲 Not started |
-| JavaScript engine (`crates/js`) | 🔲 Blocked — `boa_engine` audit required |
-| Security / privacy policy (`crates/security`) | 🔲 Not started |
+| JavaScript engine (`crates/js`) | 🔲 Pending — `boa_engine` audit complete, integration not yet started |
+| Security / privacy policy (`crates/security`) | 🔲 Stub only — not yet wired to network layer |
 
 ---
 
@@ -67,10 +67,10 @@ Each crate has a single responsibility. No circular dependencies. No global muta
 
 These are defaults, not options:
 
-- **Third-party cookies blocked.** Cross-site tracking via cookies is off at the network layer.
-- **HTTPS enforced.** Downgrade attempts hard-fail. No warn-and-proceed for HTTP on HTTPS pages.
-- **HSTS preload list shipped with the binary.** Protection is immediate before the first visit.
-- **DNS-over-HTTPS.** Plaintext DNS leaks every domain you visit to your ISP and local network. DoH is the default once implemented.
+- **Third-party cookies blocked.** *(Planned)* Cross-site tracking via cookies will be off at the network layer.
+- **HTTPS enforced.** ✅ Downgrade attempts hard-fail. No warn-and-proceed for HTTP on HTTPS pages.
+- **HSTS preload list shipped with the binary.** *(Planned)* In-memory HSTS store is implemented; compiled-in preload list is not yet added.
+- **DNS-over-HTTPS.** ✅ Plaintext DNS is banned. All queries go through Cloudflare 1.1.1.1 via DoH by default.
 - **No DNS prefetch, no prefetch/preconnect.** These leak browsing intent to servers you never chose to contact.
 - **Canvas fingerprinting returns noise** for cross-origin contexts.
 - **Font enumeration blocked.** Your installed font list is a fingerprint.
@@ -124,7 +124,7 @@ The reasoning for accepting this tradeoff:
 
 4. **This is revisitable.** Boa's roadmap includes JIT work. If a well-audited JIT becomes available within the Boa ecosystem, the decision can be reconsidered. But "fast enough for everyday web use" is the correct bar to clear first.
 
-Before Boa is integrated, a full audit of its dependency tree is required and documented in `docs/decisions/boa-audit.md`.
+The Boa dependency audit is complete and documented in `docs/decisions/boa-audit.md`. Decision: integrate as-is (v0.21.0). Integration into `crates/js` is the next step.
 
 ---
 
