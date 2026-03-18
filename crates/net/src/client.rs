@@ -188,6 +188,16 @@ async fn fetch_step(ctx: &NetworkContext, url: String, depth: u8) -> Result<Stri
                     "redirect from HTTPS to HTTP is not allowed: '{next_url}'"
                 )));
             }
+            // SECURITY: Block redirects to loopback addresses regardless of scheme.
+            // A server-issued redirect to https://127.0.0.2:6379/ has is_https=true so
+            // the downgrade guard above never fires, yet it reaches an internal loopback
+            // port (e.g. Redis, Kubernetes API) that should never be reachable from the
+            // browser. is_localhost covers the full 127.0.0.0/8 block via is_localhost_host().
+            if !parsed.is_localhost && next_parsed.is_localhost {
+                return Err(FetchError::Protocol(format!(
+                    "redirect to loopback address is not allowed: '{next_url}'"
+                )));
+            }
 
             fetch_with_context(ctx, next_url, depth + 1).await
         }

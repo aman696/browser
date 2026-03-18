@@ -178,7 +178,11 @@ pub fn parse_url(input: &str) -> Result<ParsedUrl, UrlError> {
         }
     };
 
-    let is_localhost = host == "localhost" || host == "127.0.0.1";
+    // SECURITY: Use is_localhost_host() which covers the full 127.0.0.0/8 loopback block,
+    // not just "localhost" and "127.0.0.1". The narrow two-value check allowed redirects to
+    // 127.0.0.2–127.255.255.255 to bypass HTTPS port enforcement (port kept as-is because
+    // is_https was already true) and reach internal services (e.g. Redis on 127.0.0.2:6379).
+    let is_localhost = is_localhost_host(&host);
 
     // ── 7. HTTPS enforcement ───────────────────────────────────────────────
     // Silently upgrade all remote HTTP to HTTPS. The privacy warning system
@@ -345,5 +349,19 @@ mod tests {
             parse_url("data:text/html,<h1>hi</h1>"),
             Err(UrlError::UnsupportedScheme)
         );
+    }
+
+    #[test]
+    fn test_127_x_loopback_block_is_localhost() {
+        // SECURITY: The full 127.0.0.0/8 block must be treated as localhost so that
+        // HTTPS enforcement does not overwrite an explicit non-standard port on these
+        // addresses. A redirect to https://127.0.0.2:6379/ must not reach Redis.
+        let result = parse_url("http://127.0.0.2:6379/").unwrap();
+        assert!(result.is_localhost);
+        assert!(!result.is_https);
+        assert_eq!(result.port, 6379);
+
+        let result = parse_url("http://127.255.255.255:8080/").unwrap();
+        assert!(result.is_localhost);
     }
 }
