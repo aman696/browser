@@ -124,13 +124,13 @@ impl<'arena> HtmlParser<'arena> {
                 }
 
                 TokenKind::Text => {
-                    let node = Node::text(self.arena, token.text);
+                    let node = Node::text(self.arena, &token.text);
                     let parent = stack.last().copied().unwrap_or(root);
                     append_child(parent, node);
                 }
 
                 TokenKind::Comment => {
-                    let node = Node::comment(self.arena, token.text);
+                    let node = Node::comment(self.arena, &token.text);
                     let parent = stack.last().copied().unwrap_or(root);
                     append_child(parent, node);
                 }

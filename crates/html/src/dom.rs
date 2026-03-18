@@ -53,9 +53,13 @@ pub struct Node<'arena> {
     /// Empty for all other node kinds.
     pub attributes: Vec<(String, String)>,
 
-    /// Text content for `Text` and `Comment` nodes.
-    /// Empty for `Element` and `Document` nodes.
-    pub text_content: String,
+    /// Text content for `Text` and `Comment` nodes, arena-allocated.
+    ///
+    /// Using `&'arena str` instead of `String` keeps all node data inside the
+    /// bump arena — no separate heap allocation per text node. The arena owns
+    /// the bytes; the lifetime `'arena` prevents any use-after-free.
+    /// Empty string `""` for `Element` and `Document` nodes (zero cost).
+    pub text_content: &'arena str,
 
     /// The parent of this node, or `None` for the document root.
     pub parent: Cell<Option<&'arena Node<'arena>>>,
@@ -75,7 +79,7 @@ impl<'arena> Node<'arena> {
             kind: NodeKind::Document,
             tag_name: "",
             attributes: Vec::new(),
-            text_content: String::new(),
+            text_content: "",
             parent: Cell::new(None),
             children: RefCell::new(bumpalo::collections::Vec::new_in(arena)),
         })
@@ -91,31 +95,31 @@ impl<'arena> Node<'arena> {
             kind: NodeKind::Element,
             tag_name,
             attributes,
-            text_content: String::new(),
+            text_content: "",
             parent: Cell::new(None),
             children: RefCell::new(bumpalo::collections::Vec::new_in(arena)),
         })
     }
 
     /// Allocate a new `Text` node in the given arena.
-    pub fn text(arena: &'arena Bump, content: impl Into<String>) -> &'arena Self {
+    pub fn text(arena: &'arena Bump, content: &str) -> &'arena Self {
         arena.alloc(Node {
             kind: NodeKind::Text,
             tag_name: "",
             attributes: Vec::new(),
-            text_content: content.into(),
+            text_content: arena.alloc_str(content),
             parent: Cell::new(None),
             children: RefCell::new(bumpalo::collections::Vec::new_in(arena)),
         })
     }
 
     /// Allocate a new `Comment` node in the given arena.
-    pub fn comment(arena: &'arena Bump, content: impl Into<String>) -> &'arena Self {
+    pub fn comment(arena: &'arena Bump, content: &str) -> &'arena Self {
         arena.alloc(Node {
             kind: NodeKind::Comment,
             tag_name: "",
             attributes: Vec::new(),
-            text_content: content.into(),
+            text_content: arena.alloc_str(content),
             parent: Cell::new(None),
             children: RefCell::new(bumpalo::collections::Vec::new_in(arena)),
         })
