@@ -155,10 +155,10 @@ mod tests {
         assert!(is_private_ip("169.254.169.254".parse().unwrap()));
         assert!(is_private_ip("172.16.0.1".parse().unwrap()));
         assert!(is_private_ip("172.31.255.255".parse().unwrap()));
-        
+
         // Edge cases around the 172.16/12 block
         assert!(!is_private_ip("172.15.255.255".parse().unwrap())); // Just outside
-        assert!(!is_private_ip("172.32.0.0".parse().unwrap()));     // Just outside
+        assert!(!is_private_ip("172.32.0.0".parse().unwrap())); // Just outside
 
         assert!(!is_private_ip("1.1.1.1".parse().unwrap()));
         assert!(!is_private_ip("93.184.216.34".parse().unwrap()));
