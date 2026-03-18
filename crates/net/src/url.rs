@@ -198,6 +198,27 @@ pub fn parse_url(input: &str) -> Result<ParsedUrl, UrlError> {
     })
 }
 
+/// Returns true if the host string represents a simple localhost address.
+///
+/// This checks for "localhost" or "127.0.0.1".
+#[must_use]
+pub fn is_localhost(host: &str) -> bool {
+    host == "localhost" || host == "127.0.0.1"
+}
+
+/// Returns true if the host string represents a loopback/localhost address.
+///
+/// Covers "localhost", "127.x.x.x" (entire IPv4 loopback /8 block),
+/// "0.0.0.0" (IPv4 unspecified), and "::1" (IPv6 loopback).
+#[must_use]
+pub fn is_localhost_host(host: &str) -> bool {
+    host == "localhost"
+        || host == "::1"
+        || host == "0.0.0.0"
+        || host == "127.0.0.1"
+        || host.starts_with("127.")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

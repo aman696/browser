@@ -48,3 +48,5 @@ criterion/
 
 # ── AI agent working directory ─────────────────────────────────────────────────
 .agents/
+.agent/
+Rules
