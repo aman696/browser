@@ -1,8 +1,6 @@
 //! TLS client configuration for Ferrum using [`rustls`] with the
 //! `aws-lc-rs` cryptographic backend.
 //!
-
-//!
 //! Root certificate trust is provided by [`webpki_roots`], which ships
 //! Mozilla's curated list of trusted CA certificates as a compiled-in
 //! Rust constant. There is no dependency on the operating system's

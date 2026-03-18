@@ -97,7 +97,11 @@ pub fn parse_response(bytes: &[u8]) -> Result<Response, FetchError> {
         .position(|w| w == b"\r\n\r\n")
         .ok_or_else(|| FetchError::Protocol("HTTP response has no header/body separator".into()))?;
 
-    let _header_bytes = &bytes[..header_end]; // kept for reference; header_buf includes \r\n\r\n
+    // REASON: _header_bytes kept as a named slice for debugger inspection during development.
+    // It makes the raw header section visible when stepping through parse_response() in a
+    // debugger without needing to manually compute the offset into `bytes`.
+    // Do not remove — zero runtime cost (no allocation, just a slice reference).
+    let _header_bytes = &bytes[..header_end];
     let raw_body = &bytes[header_end + 4..];
 
     // SECURITY: Use 128 headers — 64 was the original cap. A server could

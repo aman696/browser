@@ -6,18 +6,15 @@
 //! pure-Rust ECMAScript bytecode compiler and VM. This avoids the C++ memory
 //! safety issues that V8 and SpiderMonkey introduce.
 //!
-//! # Blocked: Boa audit required
+//! # Status: Audit complete, integration pending
 //!
-//! Per `RULES-04-networking.md`, `boa_engine` MUST NOT be added to
-//! `Cargo.toml` until a full dependency audit has been completed and
-//! documented in `docs/decisions/boa-audit.md`. That file does not yet exist.
+//! The Boa dependency audit has been completed and documented in
+//! `docs/decisions/boa-audit.md`. Decision: **Integrate as-is** (v0.21.0).
+//! Boa is pure Rust, makes no network calls, and carries only one low-risk
+//! compile-time warning (unmaintained `paste` crate, no runtime impact).
 //!
-//! When the audit is complete, add `boa_engine` to this crate's `Cargo.toml`
-//! and implement the `JsRuntime` type below.
-//!
-//! # Status
-//!
-//! **Blocked on audit.** See `docs/decisions/boa-audit.md`.
+//! Next step: add `boa_engine` to this crate's `Cargo.toml` and implement
+//! the `JsRuntime` type below.
 
 /// Execute a JavaScript string in an isolated Boa context.
 ///

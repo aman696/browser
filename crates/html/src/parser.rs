@@ -108,7 +108,9 @@ impl<'arena> HtmlParser<'arena> {
                         None => {
                             // Orphan end tag: no matching open element on the stack.
                             // SPEC: §13.2.6 — ignore it.
-                            eprintln!("[html::parser] orphan end tag </{close_name}> — ignoring");
+                            // RULES: eprintln! is banned in library crates (RULES-02).
+                            // TODO: route to a structured diagnostic/event system when one exists.
+                            // eprintln!("[html::parser] orphan end tag </{close_name}> — ignoring");
                         }
                     }
                 }
@@ -143,10 +145,12 @@ impl<'arena> HtmlParser<'arena> {
         // At end-of-document, any remaining open elements are auto-closed.
         // The stack bottom (index 0) is always the Document root.
         if stack.len() > 1 {
-            eprintln!(
-                "[html::parser] {} unclosed element(s) at end of document — auto-closing",
-                stack.len() - 1
-            );
+            // RULES: eprintln! is banned in library crates (RULES-02).
+            // TODO: route to a structured diagnostic/event system when one exists.
+            // eprintln!(
+            //     "[html::parser] {} unclosed element(s) at end of document — auto-closing",
+            //     stack.len() - 1
+            // );
         }
 
         root
