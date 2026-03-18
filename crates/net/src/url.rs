@@ -183,12 +183,18 @@ pub fn parse_url(input: &str) -> Result<ParsedUrl, UrlError> {
 
     // ── 7. Split host from optional port ──────────────────────────────────
     let (host, port) = match host_and_port.find(':') {
-        Some(colon) => (
-            host_and_port[..colon].to_owned(),
-            host_and_port[colon + 1..].parse::<u16>().map_err(|_| {
-                UrlError::InvalidHost(format!("invalid port '{}'", &host_and_port[colon + 1..]))
-            })?,
-        ),
+        Some(colon) => {
+            let port_str = &host_and_port[colon + 1..];
+            let port = port_str
+                .parse::<u16>()
+                .map_err(|_| UrlError::InvalidHost(format!("invalid port '{port_str}'")))?;
+            // Port 0 means "let the OS pick a port" at the socket level.
+            // It is never a valid destination port for an outbound HTTP request.
+            if port == 0 {
+                return Err(UrlError::InvalidHost("port 0 is not allowed".to_owned()));
+            }
+            (host_and_port[..colon].to_owned(), port)
+        }
         None => {
             let default_port: u16 = if is_https { 443 } else { 80 };
             (host_and_port.to_owned(), default_port)
@@ -380,6 +386,18 @@ mod tests {
 
         let result = parse_url("http://127.255.255.255:8080/").unwrap();
         assert!(result.is_localhost);
+    }
+
+    #[test]
+    fn test_port_zero_is_rejected() {
+        assert!(matches!(
+            parse_url("https://example.com:0/"),
+            Err(UrlError::InvalidHost(_))
+        ));
+        assert!(matches!(
+            parse_url("http://localhost:0/"),
+            Err(UrlError::InvalidHost(_))
+        ));
     }
 
     #[test]
