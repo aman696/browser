@@ -4,8 +4,6 @@
 //! it borrows slices rather than copying them wherever possible. The
 //! lifetime `'src` ties each token to the HTML string it was parsed from.
 
-use std::collections::HashMap;
-
 /// The kind of HTML token recognised by the tokenizer.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TokenKind {
@@ -38,12 +36,14 @@ pub struct Token {
     /// Empty for `Text`, `Comment`, and `Doctype` tokens.
     pub tag_name: String,
 
-    /// Attributes for `StartTag` and `SelfClosingTag` tokens.
+    /// Attributes for `StartTag` and `SelfClosingTag` tokens, in source order.
     ///
-    /// Keys are lowercased attribute names. Values are the raw attribute
-    /// values with surrounding quotes stripped.
+    /// Stored as `(name, value)` pairs. Names are lowercased; values have
+    /// surrounding quotes stripped. Order is preserved per WHATWG §13.1.2.3.
+    /// Using Vec instead of HashMap: HTML elements have 1–3 attributes on
+    /// average — hashing is pure overhead, and HashMap does not preserve order.
     /// Empty for all other token kinds.
-    pub attributes: HashMap<String, String>,
+    pub attributes: Vec<(String, String)>,
 
     /// Text content for `Text`, `Comment`, and `Doctype` tokens.
     ///
@@ -56,7 +56,7 @@ impl Token {
     pub fn tag(
         kind: TokenKind,
         tag_name: impl Into<String>,
-        attributes: HashMap<String, String>,
+        attributes: Vec<(String, String)>,
     ) -> Self {
         Self {
             kind,
@@ -71,7 +71,7 @@ impl Token {
         Self {
             kind,
             tag_name: String::new(),
-            attributes: HashMap::new(),
+            attributes: Vec::new(),
             text: text.into(),
         }
     }

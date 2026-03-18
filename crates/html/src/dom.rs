@@ -12,7 +12,6 @@
 
 use bumpalo::Bump;
 use std::cell::{Cell, RefCell};
-use std::collections::HashMap;
 
 /// The kind of a DOM node.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -46,9 +45,13 @@ pub struct Node<'arena> {
     /// Empty string for all other node kinds.
     pub tag_name: &'arena str,
 
-    /// Attributes for `Element` nodes.
+    /// Attributes for `Element` nodes, in source order.
+    ///
+    /// Stored as `(name, value)` pairs matching the token representation.
+    /// Vec preserves attribute order per WHATWG §13.1.2.3 and avoids HashMap
+    /// overhead for the typical case of 1–3 attributes per element.
     /// Empty for all other node kinds.
-    pub attributes: HashMap<String, String>,
+    pub attributes: Vec<(String, String)>,
 
     /// Text content for `Text` and `Comment` nodes.
     /// Empty for `Element` and `Document` nodes.
@@ -71,7 +74,7 @@ impl<'arena> Node<'arena> {
         arena.alloc(Node {
             kind: NodeKind::Document,
             tag_name: "",
-            attributes: HashMap::new(),
+            attributes: Vec::new(),
             text_content: String::new(),
             parent: Cell::new(None),
             children: RefCell::new(bumpalo::collections::Vec::new_in(arena)),
@@ -82,7 +85,7 @@ impl<'arena> Node<'arena> {
     pub fn element(
         arena: &'arena Bump,
         tag_name: &'arena str,
-        attributes: HashMap<String, String>,
+        attributes: Vec<(String, String)>,
     ) -> &'arena Self {
         arena.alloc(Node {
             kind: NodeKind::Element,
@@ -99,7 +102,7 @@ impl<'arena> Node<'arena> {
         arena.alloc(Node {
             kind: NodeKind::Text,
             tag_name: "",
-            attributes: HashMap::new(),
+            attributes: Vec::new(),
             text_content: content.into(),
             parent: Cell::new(None),
             children: RefCell::new(bumpalo::collections::Vec::new_in(arena)),
@@ -111,7 +114,7 @@ impl<'arena> Node<'arena> {
         arena.alloc(Node {
             kind: NodeKind::Comment,
             tag_name: "",
-            attributes: HashMap::new(),
+            attributes: Vec::new(),
             text_content: content.into(),
             parent: Cell::new(None),
             children: RefCell::new(bumpalo::collections::Vec::new_in(arena)),

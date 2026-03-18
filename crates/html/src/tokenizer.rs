@@ -12,7 +12,6 @@
 //! the token list can be passed to the parser without borrowing the source.
 
 use crate::token::{Token, TokenKind};
-use std::collections::HashMap;
 
 /// Tokenizes a raw HTML string into a [`Vec<Token>`].
 ///
@@ -123,7 +122,7 @@ pub fn tokenize(html: &str) -> Vec<Token> {
                     Some(pos) => {
                         tokens.push(Token::text_or_comment(TokenKind::Text, &html[i..pos]));
                         // Emit the end tag token and advance past it.
-                        tokens.push(Token::tag(TokenKind::EndTag, &tag_name, HashMap::new()));
+                        tokens.push(Token::tag(TokenKind::EndTag, &tag_name, Vec::new()));
                         i = pos + end_tag.len();
                     }
                     None => {
@@ -147,17 +146,21 @@ pub fn tokenize(html: &str) -> Vec<Token> {
     tokens
 }
 
-/// Parse a run of HTML attribute key=value pairs into a `HashMap`.
+/// Parse a run of HTML attribute key=value pairs into an ordered `Vec`.
 ///
 /// Handles both quoted (`attr="value"` and `attr='value'`) and unquoted
 /// (`attr=value`) forms. Boolean attributes (no `=`) are not yet handled.
+///
+/// Returns `Vec<(String, String)>` rather than `HashMap` to preserve source
+/// order per WHATWG §13.1.2.3 and avoid hashing overhead for the typical
+/// case of 1–3 attributes.
 ///
 /// # SPEC DEVIATION: §13.2.5 attribute parsing
 ///
 /// Boolean attributes (e.g. `<input disabled>`) are silently dropped.
 /// This will be corrected in the next HTML tokenizer session.
-fn parse_attributes(attr_str: &str) -> HashMap<String, String> {
-    let mut attributes = HashMap::new();
+fn parse_attributes(attr_str: &str) -> Vec<(String, String)> {
+    let mut attributes = Vec::new();
     let mut remaining = attr_str.trim();
 
     while !remaining.is_empty() {
@@ -196,7 +199,7 @@ fn parse_attributes(attr_str: &str) -> HashMap<String, String> {
         };
 
         if !name.is_empty() {
-            attributes.insert(name, value.to_owned());
+            attributes.push((name, value.to_owned()));
         }
         remaining = after;
     }
@@ -249,14 +252,15 @@ mod tests {
     fn test_tokenize_attribute_parsing() {
         let tokens = tokenize(r#"<a href="https://example.com" class="link">"#);
         assert_eq!(tokens.len(), 1);
-        assert_eq!(
-            tokens[0].attributes.get("href").map(|s| s.as_str()),
-            Some("https://example.com")
-        );
-        assert_eq!(
-            tokens[0].attributes.get("class").map(|s| s.as_str()),
-            Some("link")
-        );
+        let attr = |name: &str| -> Option<&str> {
+            tokens[0]
+                .attributes
+                .iter()
+                .find(|(k, _)| k == name)
+                .map(|(_, v)| v.as_str())
+        };
+        assert_eq!(attr("href"), Some("https://example.com"));
+        assert_eq!(attr("class"), Some("link"));
     }
 
     #[test]
