@@ -198,13 +198,15 @@ pub fn parse_url(input: &str) -> Result<ParsedUrl, UrlError> {
     })
 }
 
-/// Returns true if the host string represents a simple localhost address.
-///
-/// This checks for "localhost" or "127.0.0.1".
-#[must_use]
-pub fn is_localhost(host: &str) -> bool {
-    host == "localhost" || host == "127.0.0.1"
-}
+// DEAD CODE — is_localhost() removed: clippy -D warnings treats unused pub fns as errors.
+// This narrow two-value check ("localhost" | "127.0.0.1") is already inlined inside
+// parse_url(). Any caller that needs localhost detection should use is_localhost_host()
+// which covers the full 127.0.0.0/8 block. Re-expose this only if a caller with a
+// deliberate reason to exclude 127.x.x.x (x != 1) ever materialises.
+//
+// pub fn is_localhost(host: &str) -> bool {
+//     host == "localhost" || host == "127.0.0.1"
+// }
 
 /// Returns true if the host string represents a loopback/localhost address.
 ///
