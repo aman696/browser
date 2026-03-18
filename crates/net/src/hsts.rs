@@ -116,7 +116,12 @@ impl HstsStore {
     /// Returns `true` if the given host (or a parent domain with `includeSubDomains`)
     /// has a recorded, non-expired HSTS policy.
     ///
-    /// Expired entries are pruned lazily on lookup.
+    /// Expired entries are **not** removed here — this method takes `&self` and only
+    /// reads the map. Stale entries accumulate until the two-phase eviction in
+    /// [`HstsStore::record`] sweeps them out when the cap is reached. For a
+    /// long-running session this means the map may hold dead entries, but they are
+    /// always skipped correctly on lookup (the `expires > now` check). True lazy
+    /// pruning would require `&mut self`; that is a future improvement.
     ///
     /// # Parameters
     /// - `host`: The bare hostname to check, e.g. `"sub.example.com"`.
