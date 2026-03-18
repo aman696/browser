@@ -78,8 +78,15 @@ pub fn build_resolver() -> TokioResolver {
 ///
 /// Returns [`FetchError::Dns`] if the hostname cannot be resolved.
 pub async fn resolve(resolver: &TokioResolver, host: &str) -> Result<IpAddr, FetchError> {
+    let is_localhost_name = crate::url::is_localhost_host(host);
+
     // Short-circuit for literal IP addresses — no DNS needed.
     if let Ok(ip) = host.parse::<IpAddr>() {
+        if is_private_ip(ip) && !is_localhost_name {
+            return Err(FetchError::Dns(
+                "DNS resolved to private/reserved IP address — possible SSRF".into(),
+            ));
+        }
         return Ok(ip);
     }
 
@@ -96,5 +103,80 @@ pub async fn resolve(resolver: &TokioResolver, host: &str) -> Result<IpAddr, Fet
         .or_else(|| lookup.iter().next())
         .ok_or_else(|| FetchError::Dns(format!("no IP addresses found for '{host}'")))?;
 
+    if is_private_ip(ip) && !is_localhost_name {
+        return Err(FetchError::Dns(
+            "DNS resolved to private/reserved IP address — possible SSRF".into(),
+        ));
+    }
+
     Ok(ip)
+}
+
+fn is_private_ip(ip: IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(ipv4) => {
+            let octets = ipv4.octets();
+            ipv4.is_loopback()
+                || ipv4.is_unspecified()
+                || octets[0] == 0
+                || octets[0] == 10
+                || (octets[0] == 172 && (octets[1] >= 16 && octets[1] <= 31))
+                || (octets[0] == 192 && octets[1] == 168)
+                || (octets[0] == 169 && octets[1] == 254)
+        }
+        IpAddr::V6(ipv6) => {
+            let segments = ipv6.segments();
+            // SECURITY: IPv4-mapped IPv6 addresses (::ffff:x.x.x.x, i.e. ::ffff:0:0/96)
+            // are returned as IpAddr::V6 by hickory_resolver but the Linux kernel
+            // transparently routes them to the IPv4 host when IPV6_V6ONLY=0 (the default).
+            // Without this check an attacker can publish an AAAA record of ::ffff:192.168.1.1
+            // and bypass the IPv4 private-range guard entirely — classic SSRF via protocol confusion.
+            // We normalise to IPv4 and recurse so the full IPv4 range-table is applied.
+            if let Some(ipv4) = ipv6.to_ipv4_mapped() {
+                return is_private_ip(IpAddr::V4(ipv4));
+            }
+            ipv6.is_loopback()
+                || ipv6.is_unspecified()
+                || (segments[0] & 0xfe00) == 0xfc00 // ULA fc00::/7
+                || (segments[0] & 0xffc0) == 0xfe80 // link-local fe80::/10
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_is_private_ip() {
+        assert!(is_private_ip("127.0.0.1".parse().unwrap()));
+        assert!(is_private_ip("10.0.0.1".parse().unwrap()));
+        assert!(is_private_ip("192.168.1.1".parse().unwrap()));
+        assert!(is_private_ip("169.254.169.254".parse().unwrap()));
+        assert!(is_private_ip("172.16.0.1".parse().unwrap()));
+        assert!(is_private_ip("172.31.255.255".parse().unwrap()));
+        
+        // Edge cases around the 172.16/12 block
+        assert!(!is_private_ip("172.15.255.255".parse().unwrap())); // Just outside
+        assert!(!is_private_ip("172.32.0.0".parse().unwrap()));     // Just outside
+
+        assert!(!is_private_ip("1.1.1.1".parse().unwrap()));
+        assert!(!is_private_ip("93.184.216.34".parse().unwrap()));
+        assert!(is_private_ip("::1".parse().unwrap()));
+
+        // SECURITY: IPv4-mapped IPv6 addresses must be treated as their IPv4 equivalent.
+        // An attacker can serve ::ffff:192.168.1.1 as an AAAA record; without this check
+        // it would bypass the IPv4 private-range guard and allow SSRF to internal hosts.
+        assert!(is_private_ip("::ffff:192.168.1.1".parse().unwrap()));
+        assert!(is_private_ip("::ffff:10.0.0.1".parse().unwrap()));
+        assert!(is_private_ip("::ffff:127.0.0.1".parse().unwrap()));
+        assert!(!is_private_ip("::ffff:1.1.1.1".parse().unwrap()));
+    }
+
+    #[tokio::test]
+    async fn test_resolve_localhost() {
+        let resolver = build_resolver();
+        let ip = resolve(&resolver, "localhost").await.unwrap();
+        assert_eq!(ip, "127.0.0.1".parse::<IpAddr>().unwrap());
+    }
 }
