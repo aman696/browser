@@ -2,8 +2,7 @@
 
 ## Objective
 
-Harden `crates/net` against security and privacy threats, as mandated by
-`RULES-03-privacy.md` and `RULES-04-networking.md`, and as designed in
+Harden `crates/net` against security and privacy threats, as designed in
 `docs/decisions/network-hardening.md`.
 
 ## Changes Made

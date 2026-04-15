@@ -370,8 +370,7 @@ and resource-loading layers are built.
 
 ## Verified — Adversarial Test Results
 
-All hardening rules were verified by an active adversarial test suite
-(`tmp/adversarial_attack_test.py`) run on 2026-03-10. personal test not on github
+All hardening rules are verified by the unit tests in crates/net/src/*.rs. An extended adversarial integration test suite was run locally during development; results are tabulated below
 
 ### Phase A — URL Parser (7/7 blocked)
 
