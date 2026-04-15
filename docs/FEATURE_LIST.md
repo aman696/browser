@@ -9,9 +9,8 @@
 - ✅ URL parsing and validation — `url.rs`; HTTPS enforcement, userinfo/fragment/zone-id rejection, CRLF guard, port 0 rejection
 - ✅ DNS resolution via hickory-resolver — `dns.rs`
 - ✅ DNS-over-HTTPS (DoH) — `dns.rs`; Cloudflare upstream, SSRF guard covering RFC 1918, CGNAT, loopback `127.0.0.0/8`, IPv4-mapped IPv6
-- [ ] HTML tokenizer (WHATWG spec) — **partial**; raw-text mode for `<script>`/`<style>`, DOCTYPE, basic start/end/self-closing/comment tokens. `SPEC DEVIATION:` comments in source. Boolean attributes, CDATA, `<textarea>` raw-text, and ~50 WHATWG states not yet implemented.
-- [ ] HTML parser and DOM tree construction (WHATWG spec) — **partial**; stack-based builder with bumpalo arena allocation, auto-close, `Cell<Option<&Node>>` parent pointers. Not the full WHATWG tree-construction algorithm.
-- [ ] CSS parser — **stub only** — `parse_css()` returns `CssError::NotImplemented`; roadmap in `docs/sessions/2026-03-19_css-parser-roadmap.md`
+- [ ] HTML parsing — **partial**; plan is to integrate `html5ever` (from Servo/Firefox ecosystem) rather than complete the custom WHATWG state machine. Integration requires `TreeSink` implementation for the bumpalo arena.
+- [ ] CSS parser — **stub only**; plan is to integrate `cssparser` (from Servo/Firefox ecosystem) rather than building a custom tokenizer. Roadmap in `docs/sessions/2026-03-19_css-parser-roadmap.md`
 - [ ] CSS cascade and computed style resolution — not started
 - [ ] Box model and layout engine — not started
 - [ ] Paint and compositing (crates/render) — not started

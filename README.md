@@ -20,8 +20,8 @@ Early development. The networking layer is the most mature crate. The HTML token
 | Crate | What It Does | Status |
 |---|---|---|
 | `crates/net` | HTTP/HTTPS, TLS, DoH DNS, HSTS, SSRF protection | ✅ Working |
-| `crates/html` | HTML tokenizer + DOM tree builder | Partial (not full WHATWG state machine) |
-| `crates/css` | CSS parsing and cascade | Stub |
+| `crates/html` | HTML DOM tree builder (integrating html5ever) | Partial (integration pending) |
+| `crates/css` | CSS parsing and cascade (integrating cssparser) | Stub |
 | `crates/layout` | Box model and layout engine | Stub |
 | `crates/render` | Painting and compositing | Stub |
 | `crates/js` | JavaScript engine (Boa) | Stub — audit complete, integration not started |
