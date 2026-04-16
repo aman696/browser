@@ -3,7 +3,7 @@ This project Ferrum which I initially started with the intention of learning abo
 1) Writing boiler plate  and scaffolding code and writing tests  and commenting on the codes so other developers if someone joins can understand the code easily
 2) Enhancing my own written documents which i had wrote in my own words but needed to write and beautify them
 3) Building a roadmap and phase developement for the project
-4) Claude/Antigravity was used for this purpose
+4) Claude/Antigravity was used for this purpose and will be shifting to local model setup with gemma 4 at the helm going forward and if used cloud AI will be mentioning it explicity there
 5) All outputs of this project — including any AI-assisted portions — are 
 released under the Mozilla Public License 2.0 (MPL 2.0)
 
